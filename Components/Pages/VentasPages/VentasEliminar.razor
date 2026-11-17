@@ -1,0 +1,116 @@
+@page "/Ventas/Eliminar/{VentaId:int}"
+@rendermode InteractiveServer
+@using BlazorBootstrap
+@using FranciscoJoel_AP1_P2.Extensors
+@using FranciscoJoel_AP1_P2.Models
+@using FranciscoJoel_AP1_P2.Services
+@inject VentasService ventasService
+@inject ProductosService productosService
+@inject ToastService toastService
+@inject NavigationManager navigation
+
+<PageTitle>Eliminar Venta</PageTitle>
+<div class="container">
+    <div class="card shadow-lg">
+        <div class="card-header">
+            <h5 class="card-title mt-2">Eliminar Venta</h5>
+        </div>
+
+        @if (Venta is null)
+        {
+            <div class="card-body">
+                <div class="alert alert-warning">La venta solicitada no existe.</div>
+                <a href="/Ventas" class="btn btn-secondary bi bi-arrow-left"> Volver</a>
+            </div>
+        }
+        else
+        {
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    &iquest;Seguro que desea eliminar esta venta? Las cantidades vendidas se devolveran al stock.
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-3"><strong>VentaId:</strong> @Venta.VentaId</div>
+                    <div class="col-3"><strong>Fecha:</strong> @Venta.Fecha.ToString("dd/MM/yyyy")</div>
+                    <div class="col-6"><strong>Observacion:</strong> @Venta.Observacion</div>
+                </div>
+
+                <table class="table table-striped">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Producto</th>
+                            <th class="text-end">Cantidad</th>
+                            <th class="text-end">Precio</th>
+                            <th class="text-end">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var linea in Venta.Detalle)
+                        {
+                            <tr>
+                                <td>@NombreProducto(linea.ProductoId)</td>
+                                <td class="text-end">@linea.Cantidad</td>
+                                <td class="text-end">@linea.Precio.ToString("N2")</td>
+                                <td class="text-end">@((linea.Cantidad * linea.Precio).ToString("N2"))</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div class="d-flex justify-content-end">
+                    <h5>Total: @Venta.Total.ToString("N2")</h5>
+                </div>
+            </div>
+
+            <div class="card-footer d-flex justify-content-between">
+                <a href="/Ventas" class="btn btn-secondary bi bi-arrow-left"> Volver</a>
+                <button type="button" class="btn btn-danger bi bi-trash" @onclick="Eliminar"> Eliminar</button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int VentaId { get; set; }
+
+    private Ventas? Venta { get; set; }
+    private List<Productos> ProductosLista { get; set; } = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProductosLista = await productosService.Listar();
+
+        var resultado = await ventasService.Buscar(VentaId);
+
+        if (resultado.IsSuccess)
+        {
+            Venta = resultado.Value;
+        }
+        else
+        {
+            toastService.ShowError(resultado.Error.Description);
+        }
+    }
+
+    private string NombreProducto(int productoId)
+    {
+        return ProductosLista.FirstOrDefault(p => p.ProductoId == productoId)?.Nombre ?? "Producto";
+    }
+
+    private async Task Eliminar()
+    {
+        var resultado = await ventasService.Eliminar(VentaId);
+
+        if (resultado.IsSuccess)
+        {
+            toastService.ShowSuccess("Venta eliminada correctamente.");
+            navigation.NavigateTo("/Ventas");
+        }
+        else
+        {
+            toastService.ShowError(resultado.Error.Description);
+        }
+    }
+}

@@ -1,0 +1,276 @@
+@page "/Ventas/Crear"
+@page "/Ventas/Editar/{VentaId:int}"
+@rendermode InteractiveServer
+@using BlazorBootstrap
+@using FranciscoJoel_AP1_P2.Extensors
+@using FranciscoJoel_AP1_P2.Models
+@using FranciscoJoel_AP1_P2.Services
+@inject VentasService ventasService
+@inject ProductosService productosService
+@inject ToastService toastService
+@inject NavigationManager navigation
+
+<PageTitle>@(VentaId > 0 ? "Modificar Venta" : "Registro de Ventas")</PageTitle>
+<div class="container">
+    <div class="card shadow-lg">
+        <div class="card-header">
+            <h5 class="card-title mt-2">@(VentaId > 0 ? "Modificar Venta" : "Registro de Ventas")</h5>
+        </div>
+
+        @if (NoEncontrada)
+        {
+            <div class="card-body">
+                <div class="alert alert-warning">La venta solicitada no existe.</div>
+                <a href="/Ventas" class="btn btn-secondary bi bi-arrow-left"> Volver</a>
+            </div>
+        }
+        else
+        {
+            <EditForm Model="Venta" OnValidSubmit="Guardar">
+                <DataAnnotationsValidator />
+
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-3">
+                            <label class="form-label"><strong>VentaId</strong></label>
+                            <input class="form-control" value="@Venta.VentaId" readonly />
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label"><strong>Fecha</strong></label>
+                            <InputDate class="form-control" @bind-Value="Venta.Fecha" />
+                            <ValidationMessage For="() => Venta.Fecha" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label"><strong>Observacion</strong></label>
+                            <InputText class="form-control" @bind-Value="Venta.Observacion" />
+                            <ValidationMessage For="() => Venta.Observacion" />
+                        </div>
+                    </div>
+
+                    <hr />
+
+                    <h6>Detalle de la venta</h6>
+                    <div class="row align-items-end mb-3">
+                        <div class="col-4">
+                            <label class="form-label"><strong>Producto</strong></label>
+                            <select class="form-select" @bind="ProductoId" @bind:after="CargarPrecio">
+                                <option value="0">-- Seleccione un producto --</option>
+                                @foreach (var producto in ProductosLista)
+                                {
+                                    <option value="@producto.ProductoId">@producto.Nombre (Disponibles: @Disponible(producto.ProductoId))</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label class="form-label"><strong>Precio</strong></label>
+                            <label class="form-control">@Precio.ToString("N2")</label>
+                        </div>
+                        <div class="col-2">
+                            <label class="form-label"><strong>Cantidad</strong></label>
+                            <input type="number" class="form-control" min="1" @bind="Cantidad" />
+                        </div>
+                        <div class="col-2">
+                            <button type="button" class="btn btn-outline-success bi bi-plus" @onclick="AgregarDetalle"> Agregar</button>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(MensajeDetalle))
+                    {
+                        <div class="alert alert-danger" role="alert">@MensajeDetalle</div>
+                    }
+
+                    <table class="table table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Producto</th>
+                                <th class="text-end">Cantidad</th>
+                                <th class="text-end">Precio</th>
+                                <th class="text-end">Subtotal</th>
+                                <th class="text-center">Quitar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var linea in Venta.Detalle)
+                            {
+                                <tr>
+                                    <td>@NombreProducto(linea.ProductoId)</td>
+                                    <td class="text-end">@linea.Cantidad</td>
+                                    <td class="text-end">@linea.Precio.ToString("N2")</td>
+                                    <td class="text-end">@((linea.Cantidad * linea.Precio).ToString("N2"))</td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-outline-danger bi bi-dash-circle" @onclick="() => QuitarDetalle(linea)"> Quitar</button>
+                                    </td>
+                                </tr>
+                            }
+                            @if (Venta.Detalle.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted">Aun no hay productos agregados.</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+
+                    <div class="d-flex justify-content-end">
+                        <h5>Total: @Total.ToString("N2")</h5>
+                    </div>
+                </div>
+
+                <div class="card-footer d-flex justify-content-between">
+                    <a href="/Ventas" class="btn btn-secondary bi bi-arrow-left"> Volver</a>
+                    <button type="submit" class="btn btn-primary bi bi-floppy" disabled="@Guardando"> Guardar</button>
+                </div>
+            </EditForm>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int VentaId { get; set; }
+
+    private Ventas Venta { get; set; } = new();
+    private List<Productos> ProductosLista { get; set; } = [];
+    private Dictionary<int, int> CantidadesOriginales { get; set; } = [];
+    private int ProductoId { get; set; }
+    private int Cantidad { get; set; } = 1;
+    private decimal Precio { get; set; }
+    private string? MensajeDetalle { get; set; }
+    private bool Guardando { get; set; }
+    private bool NoEncontrada { get; set; }
+    private decimal Total => Venta.Detalle.Sum(d => d.Cantidad * d.Precio);
+
+    protected override async Task OnInitializedAsync()
+    {
+        ProductosLista = await productosService.Listar();
+
+        if (VentaId > 0)
+        {
+            var resultado = await ventasService.Buscar(VentaId);
+
+            if (!resultado.IsSuccess)
+            {
+                toastService.ShowError(resultado.Error.Description);
+                NoEncontrada = true;
+                return;
+            }
+
+            if (resultado.Value is null)
+            {
+                NoEncontrada = true;
+                return;
+            }
+
+            Venta = resultado.Value;
+            CantidadesOriginales = Venta.Detalle
+                .GroupBy(d => d.ProductoId)
+                .ToDictionary(g => g.Key, g => g.Sum(d => d.Cantidad));
+        }
+    }
+
+    private int Disponible(int productoId)
+    {
+        var producto = ProductosLista.FirstOrDefault(p => p.ProductoId == productoId);
+
+        if (producto is null)
+        {
+            return 0;
+        }
+
+        var original = CantidadesOriginales.GetValueOrDefault(productoId);
+        var enLista = Venta.Detalle.Where(d => d.ProductoId == productoId).Sum(d => d.Cantidad);
+
+        return producto.Stock + original - enLista;
+    }
+
+    private string NombreProducto(int productoId)
+    {
+        return ProductosLista.FirstOrDefault(p => p.ProductoId == productoId)?.Nombre ?? "Producto";
+    }
+
+    private void CargarPrecio()
+    {
+        Precio = ProductosLista.FirstOrDefault(p => p.ProductoId == ProductoId)?.Precio ?? 0;
+    }
+
+    private void AgregarDetalle()
+    {
+        MensajeDetalle = null;
+
+        if (ProductoId == 0)
+        {
+            MensajeDetalle = "Debe seleccionar un producto.";
+            return;
+        }
+
+        if (Cantidad <= 0)
+        {
+            MensajeDetalle = "La cantidad debe ser mayor que cero.";
+            return;
+        }
+
+        var disponible = Disponible(ProductoId);
+
+        if (Cantidad > disponible)
+        {
+            MensajeDetalle = $"Stock insuficiente para {NombreProducto(ProductoId)}. Disponible: {disponible}.";
+            return;
+        }
+
+        var existente = Venta.Detalle.FirstOrDefault(d => d.ProductoId == ProductoId);
+
+        if (existente is not null)
+        {
+            existente.Cantidad += Cantidad;
+        }
+        else
+        {
+            Venta.Detalle.Add(new VentasDetalle
+            {
+                ProductoId = ProductoId,
+                Cantidad = Cantidad,
+                Precio = Precio
+            });
+        }
+
+        ProductoId = 0;
+        Cantidad = 1;
+        Precio = 0;
+    }
+
+    private void QuitarDetalle(VentasDetalle linea)
+    {
+        Venta.Detalle.Remove(linea);
+        MensajeDetalle = null;
+    }
+
+    private async Task Guardar()
+    {
+        MensajeDetalle = null;
+
+        if (Venta.Detalle.Count == 0)
+        {
+            MensajeDetalle = "Debe agregar al menos un producto al detalle de la venta.";
+            toastService.ShowError(MensajeDetalle);
+            return;
+        }
+
+        Guardando = true;
+        Venta.Total = Total;
+
+        var resultado = await ventasService.Guardar(Venta);
+
+        Guardando = false;
+
+        if (resultado.IsSuccess)
+        {
+            toastService.ShowSuccess("Venta guardada correctamente.");
+            navigation.NavigateTo("/Ventas");
+        }
+        else
+        {
+            MensajeDetalle = resultado.Error.Description;
+            toastService.ShowError(resultado.Error.Description);
+        }
+    }
+}

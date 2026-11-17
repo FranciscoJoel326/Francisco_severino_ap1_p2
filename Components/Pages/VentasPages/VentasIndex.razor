@@ -1,0 +1,143 @@
+@page "/Ventas"
+@rendermode InteractiveServer
+@using BlazorBootstrap
+@using FranciscoJoel_AP1_P2.Extensors
+@using FranciscoJoel_AP1_P2.Models
+@using FranciscoJoel_AP1_P2.Services
+@using System.Linq.Expressions
+@inject VentasService ventasService
+@inject ToastService toastService
+
+<PageTitle>Consulta de Ventas</PageTitle>
+<div class="container">
+    <div class="card shadow-lg">
+        <div class="card-header d-flex justify-content-between align-center mb-4">
+            <h5 class="card-title mt-2">Consulta de Ventas</h5>
+            <a href="/Ventas/Crear" class="btn btn-primary"> <span class="bi bi-plus-square mt-3"></span> Crear</a>
+        </div>
+
+        <div class="card-body">
+            <div class="row">
+                <div class="col-2">
+                    <label class="col-form-label"><strong>VentaId</strong></label>
+                </div>
+                <div class="col-3">
+                    <label class="col-form-label"><strong>Concepto</strong></label>
+                </div>
+                <div class="col-2">
+                    <label class="col-form-label"><strong>Fecha desde</strong></label>
+                </div>
+                <div class="col-2">
+                    <label class="col-form-label"><strong>Fecha hasta</strong></label>
+                </div>
+            </div>
+
+            <div class="row align-items-center">
+                <div class="col-2">
+                    <input type="number" class="form-control" min="1" @bind="VentaIdFiltro" placeholder="Id" />
+                </div>
+                <div class="col-3">
+                    <input class="form-control" @bind="ConceptoFiltro" placeholder="Observacion" />
+                </div>
+                <div class="col-2">
+                    <input type="date" class="form-control" @bind="FechaDesde" />
+                </div>
+                <div class="col-2">
+                    <input type="date" class="form-control" @bind="FechaHasta" />
+                </div>
+                <div class="col-3">
+                    <button type="button" class="btn btn-outline-primary bi bi-search" @onclick="Buscar"> Buscar</button>
+                    <button type="button" class="btn btn-outline-secondary bi bi-eraser" @onclick="Limpiar"> Limpiar</button>
+                </div>
+            </div>
+
+            <div class="grid mt-3">
+                <table class="table table-striped table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>VentaId</th>
+                            <th>Fecha</th>
+                            <th>Observacion</th>
+                            <th class="text-end">Total</th>
+                            <th class="text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var venta in Lista)
+                        {
+                            <tr>
+                                <td>@venta.VentaId</td>
+                                <td>@venta.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td>@venta.Observacion</td>
+                                <td class="text-end">@venta.Total.ToString("N2")</td>
+                                <td class="text-center">
+                                    <a href="/Ventas/Editar/@venta.VentaId" class="btn btn-outline-success bi bi-pencil-square"> Editar</a>
+                                    <a href="/Ventas/Eliminar/@venta.VentaId" class="btn btn-outline-danger bi bi-trash"> Eliminar</a>
+                                </td>
+                            </tr>
+                        }
+                        @if (Lista.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="5" class="text-center text-muted">No hay ventas que coincidan con la busqueda.</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card-footer d-flex justify-content-between align-center mb-4">
+            <span><strong>Conteo de registros:</strong> @Lista.Count</span>
+            <span><strong>Total vendido:</strong> @TotalVendido.ToString("N2")</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int? VentaIdFiltro { get; set; }
+    private string ConceptoFiltro { get; set; } = string.Empty;
+    private DateTime? FechaDesde { get; set; }
+    private DateTime? FechaHasta { get; set; }
+    private List<Ventas> Lista { get; set; } = [];
+    private decimal TotalVendido => Lista.Sum(v => v.Total);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Buscar();
+    }
+
+    private async Task Buscar()
+    {
+        int? ventaId = VentaIdFiltro;
+        string concepto = ConceptoFiltro?.Trim() ?? string.Empty;
+        DateTime? desde = FechaDesde?.Date;
+        DateTime? hasta = FechaHasta?.Date.AddDays(1);
+
+        Expression<Func<Ventas, bool>> criterio = v =>
+            (ventaId == null || v.VentaId == ventaId) &&
+            (concepto == "" || v.Observacion.Contains(concepto)) &&
+            (desde == null || v.Fecha >= desde) &&
+            (hasta == null || v.Fecha < hasta);
+
+        var resultado = await ventasService.GetList(criterio);
+
+        if (resultado.IsSuccess)
+        {
+            Lista = resultado.Value ?? [];
+        }
+        else
+        {
+            toastService.ShowError(resultado.Error.Description);
+        }
+    }
+
+    private async Task Limpiar()
+    {
+        VentaIdFiltro = null;
+        ConceptoFiltro = string.Empty;
+        FechaDesde = null;
+        FechaHasta = null;
+        await Buscar();
+    }
+}
